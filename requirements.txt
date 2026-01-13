@@ -1,0 +1,18 @@
+# Core data stack
+numpy>=2.1.0
+pandas>=2.2.0
+
+# ML & explainability
+scikit-learn>=1.6.0
+shap
+
+# Agent / LLM
+langgraph
+openai>=1.55.0
+
+# UI
+streamlit>=1.40.0
+
+# Utilities
+faker>=24.9.0
+python-dotenv>=1.0.1
