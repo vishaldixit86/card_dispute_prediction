@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Dispute Prediction Wizard</title>
+  <link rel="stylesheet" href="./styles.css"/>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <div class="app">
+
+    <header class="topbar">
+      <div class="brand">
+        <div class="title">Dispute Prediction & Explainability</div>
+        <div class="subtitle">Agentic pipeline with human-in-loop controls</div>
+      </div>
+      <div class="topActions">
+        <div class="pill" id="sessionPill" title="Session ID"></div>
+        <button class="btn ghost" id="resetBtn">Reset</button>
+      </div>
+    </header>
+
+    <!-- Sticky roadmap / stepper -->
+    <div class="sticky">
+      <nav class="roadmap" id="roadmap"></nav>
+      <div class="progressTrack">
+        <div class="progressFill" id="progressFill"></div>
+        <div class="progressGlow" id="progressGlow"></div>
+      </div>
+    </div>
+
+    <main class="content">
+      <!-- Step 0 -->
+      <section class="panel" id="step0">
+        <div class="panelHead">
+          <div>
+            <h2>Step 0 — Select dispute</h2>
+            <div class="hint">Pick a dispute from the dataset and preview raw fields.</div>
+          </div>
+          <div class="panelActions">
+            <button class="btn" id="reloadRowBtn">Reload row</button>
+            <button class="btn primary" id="goAgent1Btn">Go to Agent 1</button>
+          </div>
+        </div>
+
+        <div class="grid2">
+          <div class="card">
+            <div class="cardTitle">Pick a dispute</div>
+
+            <div class="row">
+              <label>Search</label>
+              <input id="searchInput" placeholder="Type to filter dispute_id..." />
+            </div>
+
+            <div class="row">
+              <label>Dispute</label>
+              <select id="disputeSelect"></select>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="small">
+              Tip: select a dispute, then proceed through agents like a checklist.
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="cardTitle">Raw dispute preview</div>
+            <pre class="code" id="rawJson">—</pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- Step 1 -->
+      <section class="panel hidden" id="step1">
+        <div class="panelHead">
+          <div>
+            <h2>Step 1 — Agent 1: Enrichment + review</h2>
+            <div class="hint">Generate enriched features, review explanations, apply overrides.</div>
+          </div>
+          <div class="panelActions">
+            <button class="btn" id="back0Btn">Back</button>
+            <button class="btn" id="runA1Btn">Run enrichment</button>
+            <button class="btn primary" id="goAgent2Btn">Go to Agent 2</button>
+          </div>
+        </div>
+
+        <div class="grid2">
+          <div class="card">
+            <div class="cardTitle">Human overrides</div>
+
+            <div class="formGrid">
+              <div class="row">
+                <label>MCC</label>
+                <input type="number" id="mccInput"/>
+              </div>
+              <div class="row">
+                <label>Merchant risk tier (1-4)</label>
+                <input type="number" min="1" max="4" id="riskInput"/>
+              </div>
+              <div class="row">
+                <label>Txn amount</label>
+                <input type="number" step="0.01" id="amtInput"/>
+              </div>
+              <div class="row">
+                <label>Time to raise (days)</label>
+                <input type="number" step="1" id="ttrInput"/>
+              </div>
+            </div>
+
+            <div class="row">
+              <button class="btn" id="applyOverrideBtn">Apply + recompute</button>
+            </div>
+
+            <div class="divider"></div>
+            <div class="row inline">
+              <button class="btn success" id="approveEnrichBtn">Approve enrichment</button>
+              <button class="btn danger" id="rejectEnrichBtn">Not approved</button>
+            </div>
+
+            <div class="diffBox" id="overrideDiff">No changes yet.</div>
+          </div>
+
+          <div class="card">
+            <div class="cardTitle">Enriched features</div>
+            <div class="tableWrap">
+              <table class="table" id="featTable"></table>
+            </div>
+          </div>
+        </div>
+
+        <div class="card mt">
+          <div class="cardTitle">Feature explanations</div>
+          <div id="explanations" class="accordion"></div>
+        </div>
+      </section>
+
+      <!-- Step 2 -->
+      <section class="panel hidden" id="step2">
+        <div class="panelHead">
+          <div>
+            <h2>Step 2 — Agent 2: Prediction + SHAP</h2>
+            <div class="hint">Run prediction, inspect category probabilities, understand top drivers.</div>
+          </div>
+          <div class="panelActions">
+            <button class="btn" id="back1Btn">Back</button>
+            <button class="btn" id="runA2Btn">Run prediction</button>
+            <button class="btn primary" id="goAgent3Btn">Go to Agent 3</button>
+          </div>
+        </div>
+
+        <div class="cards3">
+          <div class="metric">
+            <div class="metricLabel">Predicted category</div>
+            <div class="metricValue" id="predCategory">—</div>
+          </div>
+          <div class="metric">
+            <div class="metricLabel">Customer-favor probability</div>
+            <div class="metricValue" id="predProb">—</div>
+          </div>
+          <div class="metric">
+            <div class="metricLabel">Category probabilities</div>
+            <pre class="code smallCode" id="catProbs">—</pre>
+          </div>
+        </div>
+
+        <div class="grid2 mt">
+          <div class="card">
+            <div class="cardTitle">SHAP (table)</div>
+            <div class="tableWrap">
+              <table class="table" id="shapTable"></table>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="cardTitle">SHAP (chart)</div>
+            <canvas id="shapChart" height="220"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <!-- Step 3 -->
+      <section class="panel hidden" id="step3">
+        <div class="panelHead">
+          <div>
+            <h2>Step 3 — Agent 3: Explanation + Q&A</h2>
+            <div class="hint">Generate a narrative explanation and ask follow-up questions.</div>
+          </div>
+          <div class="panelActions">
+            <button class="btn" id="back2Btn">Back</button>
+            <button class="btn" id="genExplBtn">Generate explanation</button>
+            <button class="btn success" id="approveCloseBtn">Approve & close</button>
+          </div>
+        </div>
+
+        <div class="grid2">
+          <div class="card">
+            <div class="cardTitle">Explanation</div>
+            <pre class="code" id="explanationText">—</pre>
+          </div>
+
+          <div class="card">
+            <div class="cardTitle">Follow-up Q&A</div>
+            <div class="chat" id="chat"></div>
+            <div class="chatInput">
+              <input id="questionInput" placeholder="Ask a follow-up question..." />
+              <button class="btn primary" id="askBtn">Ask</button>
+              <button class="btn ghost" id="resetChatBtn">Reset</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Done -->
+      <section class="panel hidden" id="stepDone">
+        <div class="panelHead">
+          <div>
+            <h2>Done — Case closed ✅</h2>
+            <div class="hint">Review final summary and explanation, then start a new case.</div>
+          </div>
+          <div class="panelActions">
+            <button class="btn primary" id="newCaseBtn">Start new dispute</button>
+            <button class="btn" id="reviewA2Btn">Review Agent 2</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="cardTitle">Final summary</div>
+          <pre class="code smallCode" id="finalSummary">—</pre>
+        </div>
+
+        <div class="card mt">
+          <div class="cardTitle">Final explanation</div>
+          <pre class="code" id="finalExplanation">—</pre>
+        </div>
+      </section>
+    </main>
+
+    <div class="toast" id="toast"></div>
+
+    <!-- Overlay loader -->
+    <div class="overlay hidden" id="overlay">
+      <div class="overlayCard">
+        <div class="spinner"></div>
+        <div class="overlayText" id="overlayText">Working…</div>
+      </div>
+    </div>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>

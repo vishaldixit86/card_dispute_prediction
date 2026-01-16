@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import shap
 
-from config import (
+from src.config import (
     MODELS_DIR,
     FEATURE_COLS_PATH,
     CATEGORY_MODEL_PATH,

@@ -16,3 +16,11 @@ streamlit>=1.40.0
 # Utilities
 faker>=24.9.0
 python-dotenv>=1.0.1
+
+streamlit
+numpy
+matplotlib
+shap
+dotenv
+openai
+uvicorn
