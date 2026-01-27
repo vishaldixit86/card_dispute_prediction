@@ -12,7 +12,9 @@ const state = {
   predictions: null,
   shap_top: null,
   explanation: "",
-  chat: []
+  chat: [],
+  riskTier: 1,
+  timeToRaiseDays: 0
 };
 
 const steps = [
@@ -40,6 +42,14 @@ function setOverlay(show, text="Working…"){
   if(!o) return;
   t.textContent = text;
   o.classList.toggle("hidden", !show);
+}
+
+function hidePageLoader(){
+  const pl = document.getElementById("pageLoader");
+  if(!pl) return;
+  pl.style.transition = "opacity .25s ease";
+  pl.style.opacity = "0";
+  setTimeout(()=> pl.remove(), 260);
 }
 
 async function api(path, opts={}){
@@ -102,15 +112,9 @@ function updateProgress(){
   const pct = (state.stage / (steps.length - 1)) * 100;
   fill.style.width = `${pct}%`;
 
-  // glow moves with the fill head
   const trackWidth = track.getBoundingClientRect().width;
   const x = Math.max(-140, (trackWidth * (pct / 100)) - 60);
   glow.style.transform = `translateX(${x}px)`;
-
-  // pulse glow while "active"
-  track.classList.add("active");
-  clearTimeout(updateProgress._t);
-  updateProgress._t = setTimeout(()=>track.classList.remove("active"), 900);
 }
 
 /* ---------- Panel transitions ---------- */
@@ -149,8 +153,6 @@ function setStage(i){
   renderRoadmap();
   showPanel(i);
   updateProgress();
-
-  // when moving to Step 1, populate override inputs
   if(i === 1) setOverrideInputs();
 }
 
@@ -206,12 +208,43 @@ function renderExplanations(){
   });
 }
 
+/* ---------- Segmented control + slider ---------- */
+function setRiskTier(val){
+  state.riskTier = Number(val);
+  document.querySelectorAll("#riskSegment .segBtn").forEach(btn=>{
+    btn.classList.toggle("active", Number(btn.dataset.value) === state.riskTier);
+  });
+}
+
+function setTtr(val){
+  state.timeToRaiseDays = Number(val);
+  document.getElementById("ttrSlider").value = String(state.timeToRaiseDays);
+  document.getElementById("ttrValue").textContent = String(state.timeToRaiseDays);
+ realizingSliderFill();
+}
+
+/* Optional: color-fill slider track by setting background gradient */
+function realizingSliderFill(){
+  const slider = document.getElementById("ttrSlider");
+  const min = Number(slider.min), max = Number(slider.max), v = Number(slider.value);
+  const pct = ((v - min) / (max - min)) * 100;
+  slider.style.background = `linear-gradient(90deg, rgba(110,168,255,.9) ${pct}%, rgba(255,255,255,.10) ${pct}%)`;
+}
+
 function setOverrideInputs(){
   const r = state.raw_input || {};
+
   document.getElementById("mccInput").value = (r.mcc ?? "");
-  document.getElementById("riskInput").value = (r.merchant_risk_tier ?? "");
+
+  // Risk tier from raw input (default 1)
+  const tier = Number(r.merchant_risk_tier ?? 1);
+  setRiskTier(Number.isFinite(tier) ? tier : 1);
+
   document.getElementById("amtInput").value = (r.txn_amount ?? "");
-  document.getElementById("ttrInput").value = (r.time_to_raise_days ?? r.time_to_raise ?? "");
+
+  // Time to raise (prefer time_to_raise_days, fallback time_to_raise)
+  const ttr = Number(r.time_to_raise_days ?? r.time_to_raise ?? 0);
+  setTtr(Number.isFinite(ttr) ? Math.max(0, Math.min(365, ttr)) : 0);
 }
 
 function diffPatch(oldObj, patch){
@@ -271,6 +304,8 @@ async function selectCurrent(){
   try{
     const res = await api("/select", { method:"POST", body: JSON.stringify(payload) });
     state.raw_input = res.raw_input;
+
+    // reset downstream
     state.enriched_features = null;
     state.feature_explanations = null;
     state.predictions = null;
@@ -281,6 +316,9 @@ async function selectCurrent(){
     json("rawJson", state.raw_input);
     toast("Dispute loaded");
     renderRoadmap();
+
+    // refresh override controls to match loaded row
+    setOverrideInputs();
   }catch(e){
     console.error(e);
     toast("Failed to load dispute");
@@ -322,14 +360,10 @@ async function applyOverride(){
 
   const patch = {
     mcc: Number(document.getElementById("mccInput").value),
-    merchant_risk_tier: Number(document.getElementById("riskInput").value),
+    merchant_risk_tier: state.riskTier,
     txn_amount: Number(document.getElementById("amtInput").value),
-    time_to_raise_days: Number(document.getElementById("ttrInput").value),
+    time_to_raise_days: state.timeToRaiseDays,
   };
-
-  if(patch.merchant_risk_tier < 1 || patch.merchant_risk_tier > 4){
-    return toast("merchant_risk_tier must be 1–4");
-  }
 
   const diffs = diffPatch(state.raw_input, patch);
   document.getElementById("overrideDiff").textContent =
@@ -470,6 +504,16 @@ function wire(){
   document.getElementById("reloadRowBtn").onclick = selectCurrent;
   document.getElementById("goAgent1Btn").onclick = ()=>{ if(!state.raw_input) return toast("Select a dispute"); setStage(1); };
 
+  // Risk segmented control
+  document.querySelectorAll("#riskSegment .segBtn").forEach(btn=>{
+    btn.addEventListener("click", ()=> setRiskTier(btn.dataset.value));
+  });
+
+  // Slider
+  const slider = document.getElementById("ttrSlider");
+  slider.addEventListener("input", (e)=> setTtr(e.target.value));
+  slider.addEventListener("change", (e)=> setTtr(e.target.value));
+
   // Step 1
   document.getElementById("back0Btn").onclick = ()=>setStage(0);
   document.getElementById("runA1Btn").onclick = runAgent1;
@@ -525,6 +569,18 @@ function wire(){
   renderRoadmap();
   showPanel(0);
   updateProgress();
-  await loadDisputes();
-  wire();
+
+  // defaults for controls (safe before row selection)
+  setRiskTier(1);
+  setTtr(0);
+
+  try{
+    await loadDisputes();
+    // trigger select once if first option exists (optional):
+    // await selectCurrent();
+  }finally{
+    wire();
+    // remove initial loader once UI is ready and disputes loaded
+    hidePageLoader();
+  }
 })();

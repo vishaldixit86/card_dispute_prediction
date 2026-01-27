@@ -7,7 +7,27 @@
   <link rel="stylesheet" href="./styles.css"/>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
+
 <body>
+  <!-- Background animation layers -->
+  <div class="bg">
+    <div class="blob b1"></div>
+    <div class="blob b2"></div>
+    <div class="blob b3"></div>
+    <div class="grain"></div>
+  </div>
+
+  <!-- Initial page loader (covers until app ready) -->
+  <div class="pageLoader" id="pageLoader">
+    <div class="pageLoaderCard">
+      <div class="spinnerLg"></div>
+      <div class="pageLoaderText">
+        <div class="plTitle">Preparing workspace…</div>
+        <div class="plSub">Loading disputes and initializing agents</div>
+      </div>
+    </div>
+  </div>
+
   <div class="app">
 
     <header class="topbar">
@@ -36,7 +56,7 @@
         <div class="panelHead">
           <div>
             <h2>Step 0 — Select dispute</h2>
-            <div class="hint">Pick a dispute from the dataset and preview raw fields.</div>
+            <div class="hint">Pick a dispute and preview raw fields.</div>
           </div>
           <div class="panelActions">
             <button class="btn" id="reloadRowBtn">Reload row</button>
@@ -59,10 +79,7 @@
             </div>
 
             <div class="divider"></div>
-
-            <div class="small">
-              Tip: select a dispute, then proceed through agents like a checklist.
-            </div>
+            <div class="small">Tip: proceed step-by-step to keep the audit trail clean.</div>
           </div>
 
           <div class="card">
@@ -95,17 +112,32 @@
                 <label>MCC</label>
                 <input type="number" id="mccInput"/>
               </div>
+
+              <!-- Risk tier segmented control -->
               <div class="row">
-                <label>Merchant risk tier (1-4)</label>
-                <input type="number" min="1" max="4" id="riskInput"/>
+                <label>Merchant risk tier (1–4)</label>
+                <div class="segmented" id="riskSegment" role="tablist" aria-label="Merchant risk tier">
+                  <button class="segBtn" data-value="1" type="button">1</button>
+                  <button class="segBtn" data-value="2" type="button">2</button>
+                  <button class="segBtn" data-value="3" type="button">3</button>
+                  <button class="segBtn" data-value="4" type="button">4</button>
+                </div>
+                <div class="small" id="riskHint">Lower = safer, higher = riskier</div>
               </div>
+
               <div class="row">
                 <label>Txn amount</label>
                 <input type="number" step="0.01" id="amtInput"/>
               </div>
+
+              <!-- Time-to-raise slider -->
               <div class="row">
                 <label>Time to raise (days)</label>
-                <input type="number" step="1" id="ttrInput"/>
+                <div class="sliderRow">
+                  <input type="range" min="0" max="365" step="1" id="ttrSlider"/>
+                  <div class="sliderValue"><span id="ttrValue">0</span> days</div>
+                </div>
+                <div class="small">Drag to adjust quickly (0–365). Fine control via arrow keys.</div>
               </div>
             </div>
 
@@ -141,7 +173,7 @@
         <div class="panelHead">
           <div>
             <h2>Step 2 — Agent 2: Prediction + SHAP</h2>
-            <div class="hint">Run prediction, inspect category probabilities, understand top drivers.</div>
+            <div class="hint">Run prediction, inspect probabilities, understand top drivers.</div>
           </div>
           <div class="panelActions">
             <button class="btn" id="back1Btn">Back</button>
@@ -239,13 +271,14 @@
 
     <div class="toast" id="toast"></div>
 
-    <!-- Overlay loader -->
+    <!-- Overlay loader (for actions) -->
     <div class="overlay hidden" id="overlay">
       <div class="overlayCard">
         <div class="spinner"></div>
         <div class="overlayText" id="overlayText">Working…</div>
       </div>
     </div>
+
   </div>
 
   <script src="./app.js"></script>
