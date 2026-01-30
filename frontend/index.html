@@ -9,7 +9,6 @@
 </head>
 
 <body>
-  <!-- Background animation layers -->
   <div class="bg">
     <div class="blob b1"></div>
     <div class="blob b2"></div>
@@ -17,7 +16,6 @@
     <div class="grain"></div>
   </div>
 
-  <!-- Initial page loader (covers until app ready) -->
   <div class="pageLoader" id="pageLoader">
     <div class="pageLoaderCard">
       <div class="spinnerLg"></div>
@@ -28,7 +26,41 @@
     </div>
   </div>
 
-  <div class="app">
+  <!-- Admin Login Gate -->
+  <div class="authGate hidden" id="authGate">
+    <div class="authCard">
+      <div class="authBrand">
+        <div class="authTitle">Admin Login</div>
+        <div class="authSub">Access is restricted to authorized users.</div>
+      </div>
+
+      <div class="authForm">
+        <div class="row">
+          <label>Username</label>
+          <input id="loginUser" placeholder="admin" autocomplete="username"/>
+        </div>
+        <div class="row">
+          <label>Password</label>
+          <input id="loginPass" type="password" placeholder="••••••••" autocomplete="current-password"/>
+        </div>
+
+        <div class="row inline">
+          <button class="btn primary" id="loginBtn">Login</button>
+          <button class="btn ghost" id="loginHelpBtn" type="button">Help</button>
+        </div>
+
+        <div class="authError" id="authError"></div>
+      </div>
+
+      <div class="authFoot">
+        <div class="small">
+          Note: This is a UI gate. For real security, validate credentials server-side and issue a session token.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="app hidden" id="appRoot">
 
     <header class="topbar">
       <div class="brand">
@@ -37,11 +69,11 @@
       </div>
       <div class="topActions">
         <div class="pill" id="sessionPill" title="Session ID"></div>
+        <button class="btn ghost" id="logoutBtn">Logout</button>
         <button class="btn ghost" id="resetBtn">Reset</button>
       </div>
     </header>
 
-    <!-- Sticky roadmap / stepper -->
     <div class="sticky">
       <nav class="roadmap" id="roadmap"></nav>
       <div class="progressTrack">
@@ -107,13 +139,26 @@
           <div class="card">
             <div class="cardTitle">Human overrides</div>
 
+            <!-- NEW: Evidence uploader (dummy) -->
+            <div class="row">
+              <label>Evidence upload (dummy)</label>
+              <div class="uploadRow">
+                <input id="evidenceInput" type="file" multiple class="hiddenFileInput"/>
+                <button class="btn" id="uploadEvidenceBtn" type="button">📎 Upload evidence</button>
+                <div class="uploadMeta" id="evidenceMeta">No files uploaded</div>
+              </div>
+              <div class="fileList" id="evidenceList"></div>
+              <div class="small">No processing is done — this is just UI and count tracking.</div>
+            </div>
+
+            <div class="divider"></div>
+
             <div class="formGrid">
               <div class="row">
                 <label>MCC</label>
                 <input type="number" id="mccInput"/>
               </div>
 
-              <!-- Risk tier segmented control -->
               <div class="row">
                 <label>Merchant risk tier (1–4)</label>
                 <div class="segmented" id="riskSegment" role="tablist" aria-label="Merchant risk tier">
@@ -130,7 +175,6 @@
                 <input type="number" step="0.01" id="amtInput"/>
               </div>
 
-              <!-- Time-to-raise slider -->
               <div class="row">
                 <label>Time to raise (days)</label>
                 <div class="sliderRow">
@@ -155,9 +199,24 @@
           </div>
 
           <div class="card">
-            <div class="cardTitle">Enriched features</div>
+            <div class="cardHeadRow">
+              <div>
+                <div class="cardTitle">Enriched features</div>
+                <div class="small">You can edit values inline. Click “Save edits” to use them downstream.</div>
+              </div>
+
+              <div class="inlineActions">
+                <button class="btn" id="saveFeatEditsBtn">Save edits</button>
+                <button class="btn ghost" id="resetFeatEditsBtn">Reset edits</button>
+              </div>
+            </div>
+
             <div class="tableWrap">
               <table class="table" id="featTable"></table>
+            </div>
+
+            <div class="saveBanner hidden" id="featSaveBanner">
+              Edited enriched features are saved locally for this session and will be used for Agent 2.
             </div>
           </div>
         </div>
@@ -271,7 +330,6 @@
 
     <div class="toast" id="toast"></div>
 
-    <!-- Overlay loader (for actions) -->
     <div class="overlay hidden" id="overlay">
       <div class="overlayCard">
         <div class="spinner"></div>

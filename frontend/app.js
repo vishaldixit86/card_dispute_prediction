@@ -1,586 +1,355 @@
+/* ============================================================
+   CONFIG + SESSION
+============================================================ */
 const API = "http://localhost:8000";
-const sessionId = (localStorage.getItem("session_id") || crypto.randomUUID());
+const sessionId = localStorage.getItem("session_id") || crypto.randomUUID();
 localStorage.setItem("session_id", sessionId);
 
-document.getElementById("sessionPill").textContent = `Session: ${sessionId.slice(0, 8)}…`;
+/* Demo-only admin credentials (UI gate only) */
+const DEMO_ADMIN_USER = "admin";
+const DEMO_ADMIN_PASS = "admin123";
+const ADMIN_FLAG_KEY = "is_admin";
 
+/* ============================================================
+   GLOBAL STATE
+============================================================ */
 const state = {
   stage: 0,
   raw_input: null,
+
   enriched_features: null,
+  enriched_features_original: null,
+  enriched_features_edited: null,
+  enriched_features_dirty: false,
+
   feature_explanations: null,
   predictions: null,
   shap_top: null,
+
   explanation: "",
   chat: [],
+
   riskTier: 1,
-  timeToRaiseDays: 0
+  timeToRaiseDays: 0,
+
+  // dummy evidence upload
+  evidenceFiles: []
 };
 
 const steps = [
-  { id: "step0", key: 0, title: "Select", sub: "Choose dispute" },
-  { id: "step1", key: 1, title: "Agent 1", sub: "Enrich + review" },
-  { id: "step2", key: 2, title: "Agent 2", sub: "Predict + SHAP" },
-  { id: "step3", key: 3, title: "Agent 3", sub: "Explain + Q&A" },
-  { id: "stepDone", key: 4, title: "Done", sub: "Close case" }
+  { id: "step0", title: "Select" },
+  { id: "step1", title: "Agent 1" },
+  { id: "step2", title: "Agent 2" },
+  { id: "step3", title: "Agent 3" },
+  { id: "stepDone", title: "Done" }
 ];
 
-let shapChart = null;
 let disputesCache = [];
 let hasDisputeId = true;
+let shapChart = null;
+
+/* ============================================================
+   UI HELPERS
+============================================================ */
+const $ = (id) => document.getElementById(id);
 
 function toast(msg){
-  const t = document.getElementById("toast");
+  const t = $("toast");
   t.textContent = msg;
   t.classList.add("show");
-  setTimeout(()=>t.classList.remove("show"), 1700);
+  setTimeout(()=>t.classList.remove("show"), 1800);
 }
 
 function setOverlay(show, text="Working…"){
-  const o = document.getElementById("overlay");
-  const t = document.getElementById("overlayText");
-  if(!o) return;
-  t.textContent = text;
-  o.classList.toggle("hidden", !show);
+  $("overlayText").textContent = text;
+  $("overlay").classList.toggle("hidden", !show);
 }
 
 function hidePageLoader(){
-  const pl = document.getElementById("pageLoader");
-  if(!pl) return;
-  pl.style.transition = "opacity .25s ease";
-  pl.style.opacity = "0";
-  setTimeout(()=> pl.remove(), 260);
+  const el = $("pageLoader");
+  if(!el) return;
+  el.style.opacity = "0";
+  setTimeout(()=>el.remove(), 250);
 }
 
-async function api(path, opts={}){
-  const res = await fetch(`${API}${path}`, {
+function api(path, opts={}){
+  return fetch(`${API}${path}`, {
     headers: {"Content-Type":"application/json"},
     ...opts
+  }).then(r=>{
+    if(!r.ok) throw new Error(r.statusText);
+    return r.json();
   });
-  if(!res.ok){
-    const text = await res.text();
-    throw new Error(text || `HTTP ${res.status}`);
+}
+
+/* ============================================================
+   AUTH (UI GATE ONLY)
+============================================================ */
+function authInit(){
+  const ok = localStorage.getItem(ADMIN_FLAG_KEY)==="true";
+  if(ok){
+    $("authGate").classList.add("hidden");
+    $("appRoot").classList.remove("hidden");
   }
-  return res.json();
+
+  $("loginBtn").onclick = ()=>{
+    const u = $("loginUser").value.trim();
+    const p = $("loginPass").value;
+    if(u===DEMO_ADMIN_USER && p===DEMO_ADMIN_PASS){
+      localStorage.setItem(ADMIN_FLAG_KEY,"true");
+      $("authGate").classList.add("hidden");
+      $("appRoot").classList.remove("hidden");
+      toast("Logged in");
+    } else {
+      $("authError").textContent = "Invalid credentials";
+    }
+  };
+
+  $("logoutBtn").onclick = ()=>{
+    localStorage.removeItem(ADMIN_FLAG_KEY);
+    location.reload();
+  };
 }
 
-function canGo(targetStage){
-  if(targetStage <= state.stage) return true;
-  if(targetStage === 1) return !!state.raw_input;
-  if(targetStage === 2) return !!state.enriched_features;
-  if(targetStage === 3) return !!state.predictions;
-  if(targetStage === 4) return !!state.explanation;
-  return false;
-}
-
-/* ---------- Roadmap rendering ---------- */
+/* ============================================================
+   ROADMAP / STAGE
+============================================================ */
 function renderRoadmap(){
-  const el = document.getElementById("roadmap");
-  el.innerHTML = "";
-
-  steps.forEach((s, i)=>{
-    const node = document.createElement("div");
-    node.className = "node";
-    if(i === state.stage) node.classList.add("active");
-    if(i < state.stage) node.classList.add("done");
-    if(!canGo(i)) node.classList.add("locked");
-
-    node.onclick = () => {
-      if(!canGo(i)) return toast("Complete previous step first.");
-      setStage(i);
-    };
-
-    const dot = document.createElement("div");
-    dot.className = "dot";
-
-    const text = document.createElement("div");
-    text.className = "nodeText";
-    text.innerHTML = `<div class="nodeTitle">${s.title}</div><div class="nodeSub">${s.sub}</div>`;
-
-    node.appendChild(dot);
-    node.appendChild(text);
-    el.appendChild(node);
+  const r = $("roadmap");
+  r.innerHTML = "";
+  steps.forEach((s,i)=>{
+    const n = document.createElement("div");
+    n.className = "node";
+    if(i===state.stage) n.classList.add("active");
+    if(i<state.stage) n.classList.add("done");
+    n.onclick = ()=>setStage(i);
+    n.innerHTML = `<div class="dot"></div><div class="nodeTitle">${s.title}</div>`;
+    r.appendChild(n);
   });
 }
 
 function updateProgress(){
-  const fill = document.getElementById("progressFill");
-  const glow = document.getElementById("progressGlow");
-  const track = document.querySelector(".progressTrack");
-  if(!fill || !glow || !track) return;
-
-  const pct = (state.stage / (steps.length - 1)) * 100;
-  fill.style.width = `${pct}%`;
-
-  const trackWidth = track.getBoundingClientRect().width;
-  const x = Math.max(-140, (trackWidth * (pct / 100)) - 60);
-  glow.style.transform = `translateX(${x}px)`;
+  const pct = (state.stage/(steps.length-1))*100;
+  $("progressFill").style.width = pct+"%";
 }
 
-/* ---------- Panel transitions ---------- */
-function showPanel(stageIdx){
-  const current = steps.find((s)=> !document.getElementById(s.id).classList.contains("hidden"));
-  const next = steps[stageIdx];
-
-  if(current && current.id !== next.id){
-    const curEl = document.getElementById(current.id);
-    curEl.classList.remove("enter");
-    curEl.classList.add("exit");
-
-    setTimeout(()=>{
-      curEl.classList.add("hidden");
-      curEl.classList.remove("exit");
-
-      const nextEl = document.getElementById(next.id);
-      nextEl.classList.remove("hidden");
-      nextEl.classList.add("enter");
-      setTimeout(()=> nextEl.classList.remove("enter"), 360);
-    }, 180);
-  } else {
-    steps.forEach((s, i)=>{
-      const el = document.getElementById(s.id);
-      el.classList.toggle("hidden", i !== stageIdx);
-      if(i === stageIdx){
-        el.classList.add("enter");
-        setTimeout(()=> el.classList.remove("enter"), 360);
-      }
-    });
-  }
+function showPanel(i){
+  steps.forEach((s,idx)=>{
+    $(s.id).classList.toggle("hidden", idx!==i);
+  });
 }
 
 function setStage(i){
   state.stage = i;
   renderRoadmap();
-  showPanel(i);
   updateProgress();
-  if(i === 1) setOverrideInputs();
+  showPanel(i);
+  if(i===1) setOverrideInputs();
 }
 
-function json(elId, obj){
-  document.getElementById(elId).textContent = obj ? JSON.stringify(obj, null, 2) : "—";
+/* ============================================================
+   DUMMY EVIDENCE UPLOAD
+============================================================ */
+function formatBytes(b){
+  if(!b) return "";
+  const u=["B","KB","MB","GB"];
+  let i=0; while(b>=1024 && i<u.length-1){b/=1024;i++;}
+  return `${b.toFixed(i?1:0)} ${u[i]}`;
 }
 
-function renderTable(tableEl, rows, headers){
-  const el = document.getElementById(tableEl);
-  el.innerHTML = "";
+function updateEvidenceUI(){
+  const meta = $("evidenceMeta");
+  const list = $("evidenceList");
 
-  const thead = document.createElement("thead");
-  const trh = document.createElement("tr");
-  headers.forEach(h=>{
-    const th = document.createElement("th");
-    th.textContent = h;
-    trh.appendChild(th);
-  });
-  thead.appendChild(trh);
-  el.appendChild(thead);
+  const n = state.evidenceFiles.length;
+  meta.textContent = n===0 ? "No files uploaded" : `${n} file${n>1?"s":""} uploaded`;
+  list.innerHTML = "";
 
-  const tbody = document.createElement("tbody");
-  rows.forEach((r, idx)=>{
-    const tr = document.createElement("tr");
-    tr.style.animationDelay = `${Math.min(idx * 18, 200)}ms`;
-    headers.forEach(h=>{
-      const td = document.createElement("td");
-      td.textContent = (r[h] ?? "").toString();
-      tr.appendChild(td);
-    });
-    tbody.appendChild(tr);
-  });
-  el.appendChild(tbody);
-}
-
-function renderExplanations(){
-  const wrap = document.getElementById("explanations");
-  wrap.innerHTML = "";
-  if(!state.feature_explanations) return;
-
-  Object.entries(state.feature_explanations).forEach(([k,v])=>{
-    const d = document.createElement("details");
-    const s = document.createElement("summary");
-    s.textContent = k;
-
-    const p = document.createElement("div");
-    p.className = "small";
-    p.textContent = v;
-
-    d.appendChild(s);
-    d.appendChild(p);
-    wrap.appendChild(d);
+  state.evidenceFiles.forEach(f=>{
+    const d = document.createElement("div");
+    d.className = "filePill";
+    d.innerHTML = `<div>${f.name}</div><div class="muted">${formatBytes(f.size)}</div>`;
+    list.appendChild(d);
   });
 }
 
-/* ---------- Segmented control + slider ---------- */
-function setRiskTier(val){
-  state.riskTier = Number(val);
-  document.querySelectorAll("#riskSegment .segBtn").forEach(btn=>{
-    btn.classList.toggle("active", Number(btn.dataset.value) === state.riskTier);
+function resetEvidence(){
+  state.evidenceFiles = [];
+  updateEvidenceUI();
+}
+
+/* ============================================================
+   CONTROLS (SEGMENT + SLIDER)
+============================================================ */
+function setRiskTier(v){
+  state.riskTier = Number(v);
+  document.querySelectorAll("#riskSegment .segBtn")
+    .forEach(b=>b.classList.toggle("active", b.dataset.value==v));
+}
+
+function setTtr(v){
+  state.timeToRaiseDays = Number(v);
+  $("ttrSlider").value = v;
+  $("ttrValue").textContent = v;
+}
+
+/* ============================================================
+   ENRICHED FEATURES (EDITABLE)
+============================================================ */
+function renderEditableFeatures(){
+  const t = $("featTable");
+  t.innerHTML = "";
+  if(!state.enriched_features) return;
+
+  const h = `<thead><tr><th>Feature</th><th>Value</th></tr></thead>`;
+  const b = Object.entries(state.enriched_features).map(([k,v])=>`
+    <tr>
+      <td>${k}</td>
+      <td><input class="cellInput" data-k="${k}" value="${v}"></td>
+    </tr>
+  `).join("");
+
+  t.innerHTML = h+`<tbody>${b}</tbody>`;
+
+  t.querySelectorAll("input").forEach(inp=>{
+    inp.oninput = ()=>{
+      if(!state.enriched_features_edited){
+        state.enriched_features_edited = structuredClone(state.enriched_features);
+      }
+      state.enriched_features_edited[inp.dataset.k] = isNaN(inp.value)?inp.value:Number(inp.value);
+      state.enriched_features_dirty = true;
+    };
   });
 }
 
-function setTtr(val){
-  state.timeToRaiseDays = Number(val);
-  document.getElementById("ttrSlider").value = String(state.timeToRaiseDays);
-  document.getElementById("ttrValue").textContent = String(state.timeToRaiseDays);
- realizingSliderFill();
+function saveFeatureEdits(){
+  if(!state.enriched_features_dirty) return toast("No edits");
+  state.enriched_features = structuredClone(state.enriched_features_edited);
+  state.enriched_features_dirty = false;
+  toast("Feature edits saved");
 }
 
-/* Optional: color-fill slider track by setting background gradient */
-function realizingSliderFill(){
-  const slider = document.getElementById("ttrSlider");
-  const min = Number(slider.min), max = Number(slider.max), v = Number(slider.value);
-  const pct = ((v - min) / (max - min)) * 100;
-  slider.style.background = `linear-gradient(90deg, rgba(110,168,255,.9) ${pct}%, rgba(255,255,255,.10) ${pct}%)`;
+function resetFeatureEdits(){
+  state.enriched_features = structuredClone(state.enriched_features_original);
+  state.enriched_features_edited = null;
+  state.enriched_features_dirty = false;
+  renderEditableFeatures();
+  toast("Edits reset");
 }
 
-function setOverrideInputs(){
-  const r = state.raw_input || {};
-
-  document.getElementById("mccInput").value = (r.mcc ?? "");
-
-  // Risk tier from raw input (default 1)
-  const tier = Number(r.merchant_risk_tier ?? 1);
-  setRiskTier(Number.isFinite(tier) ? tier : 1);
-
-  document.getElementById("amtInput").value = (r.txn_amount ?? "");
-
-  // Time to raise (prefer time_to_raise_days, fallback time_to_raise)
-  const ttr = Number(r.time_to_raise_days ?? r.time_to_raise ?? 0);
-  setTtr(Number.isFinite(ttr) ? Math.max(0, Math.min(365, ttr)) : 0);
-}
-
-function diffPatch(oldObj, patch){
-  const lines = [];
-  Object.keys(patch).forEach(k=>{
-    const before = oldObj?.[k];
-    const after = patch[k];
-    if(String(before) !== String(after)){
-      lines.push(`${k}: ${before} → ${after}`);
-    }
-  });
-  return lines;
-}
-
-/* ---------- Data loading ---------- */
+/* ============================================================
+   DATA LOADING
+============================================================ */
 async function loadDisputes(){
-  const data = await api("/disputes");
-  hasDisputeId = data.has_dispute_id;
-  disputesCache = data.items;
-
-  const sel = document.getElementById("disputeSelect");
-  sel.innerHTML = "";
-  disputesCache.slice(0, 500).forEach(item=>{
-    const opt = document.createElement("option");
-    opt.value = hasDisputeId ? item.dispute_id : item.row_index;
-    opt.textContent = hasDisputeId ? item.dispute_id : `Row ${item.row_index}`;
-    sel.appendChild(opt);
+  const d = await api("/disputes");
+  disputesCache = d.items;
+  hasDisputeId = d.has_dispute_id;
+  const s = $("disputeSelect");
+  s.innerHTML="";
+  disputesCache.forEach(it=>{
+    const o=document.createElement("option");
+    o.value = hasDisputeId?it.dispute_id:it.row_index;
+    o.textContent=o.value;
+    s.appendChild(o);
   });
 }
 
-function filterDisputes(q){
-  const sel = document.getElementById("disputeSelect");
-  sel.innerHTML = "";
-  const items = disputesCache.filter(it => {
-    const v = hasDisputeId ? String(it.dispute_id) : String(it.row_index);
-    return v.toLowerCase().includes(q.toLowerCase());
-  }).slice(0, 500);
-
-  items.forEach(item=>{
-    const opt = document.createElement("option");
-    opt.value = hasDisputeId ? item.dispute_id : item.row_index;
-    opt.textContent = hasDisputeId ? item.dispute_id : `Row ${item.row_index}`;
-    sel.appendChild(opt);
-  });
-}
-
-/* ---------- Step actions ---------- */
+/* ============================================================
+   STEP ACTIONS
+============================================================ */
 async function selectCurrent(){
-  const sel = document.getElementById("disputeSelect");
-  const val = sel.value;
-
+  const v = $("disputeSelect").value;
   const payload = hasDisputeId
-    ? { session_id: sessionId, dispute_id: val }
-    : { session_id: sessionId, row_index: Number(val) };
+    ? {session_id:sessionId, dispute_id:v}
+    : {session_id:sessionId, row_index:Number(v)};
 
-  setOverlay(true, "Loading dispute…");
-  try{
-    const res = await api("/select", { method:"POST", body: JSON.stringify(payload) });
-    state.raw_input = res.raw_input;
+  setOverlay(true,"Loading dispute…");
+  const r = await api("/select",{method:"POST",body:JSON.stringify(payload)});
+  state.raw_input = r.raw_input;
+  $("rawJson").textContent = JSON.stringify(r.raw_input,null,2);
 
-    // reset downstream
-    state.enriched_features = null;
-    state.feature_explanations = null;
-    state.predictions = null;
-    state.shap_top = null;
-    state.explanation = "";
-    state.chat = [];
-
-    json("rawJson", state.raw_input);
-    toast("Dispute loaded");
-    renderRoadmap();
-
-    // refresh override controls to match loaded row
-    setOverrideInputs();
-  }catch(e){
-    console.error(e);
-    toast("Failed to load dispute");
-  }finally{
-    setOverlay(false);
-  }
+  state.enriched_features = null;
+  resetEvidence();
+  toast("Dispute loaded");
+  setOverlay(false);
 }
 
 async function runAgent1(){
-  if(!state.raw_input) return toast("Select a dispute first");
-
-  const featTable = document.getElementById("featTable");
-  featTable.innerHTML = `<tbody>
-    <tr><td colspan="2"><div class="skeleton" style="height:34px"></div></td></tr>
-    <tr><td colspan="2"><div class="skeleton" style="height:34px"></div></td></tr>
-    <tr><td colspan="2"><div class="skeleton" style="height:34px"></div></td></tr>
-  </tbody>`;
-
-  setOverlay(true, "Running enrichment (Agent 1)…");
-  try{
-    const res = await api("/agent1/run", { method:"POST", body: JSON.stringify({session_id: sessionId}) });
-    state.enriched_features = res.enriched_features;
-    state.feature_explanations = res.feature_explanations;
-
-    const rows = Object.entries(state.enriched_features).map(([feature,value])=>({feature, value}));
-    renderTable("featTable", rows, ["feature","value"]);
-    renderExplanations();
-    toast("Agent 1 complete");
-  }catch(e){
-    console.error(e);
-    toast("Agent 1 failed");
-  }finally{
-    setOverlay(false);
-  }
-}
-
-async function applyOverride(){
-  if(!state.raw_input) return toast("Select a dispute first");
-
-  const patch = {
-    mcc: Number(document.getElementById("mccInput").value),
-    merchant_risk_tier: state.riskTier,
-    txn_amount: Number(document.getElementById("amtInput").value),
-    time_to_raise_days: state.timeToRaiseDays,
-  };
-
-  const diffs = diffPatch(state.raw_input, patch);
-  document.getElementById("overrideDiff").textContent =
-    diffs.length ? `Changed:\n- ${diffs.join("\n- ")}` : "No changes.";
-
-  setOverlay(true, "Applying overrides + recomputing (Agent 1)…");
-  try{
-    const res = await api("/agent1/override", { method:"POST", body: JSON.stringify({session_id: sessionId, patch}) });
-    state.raw_input = res.raw_input;
-    state.enriched_features = res.enriched_features;
-    state.feature_explanations = res.feature_explanations;
-
-    json("rawJson", state.raw_input);
-    setOverrideInputs();
-
-    const rows = Object.entries(state.enriched_features).map(([feature,value])=>({feature, value}));
-    renderTable("featTable", rows, ["feature","value"]);
-    renderExplanations();
-    toast("Overrides applied");
-  }catch(e){
-    console.error(e);
-    toast("Override failed");
-  }finally{
-    setOverlay(false);
-  }
+  setOverlay(true,"Running Agent 1…");
+  const r = await api("/agent1/run",{method:"POST",body:JSON.stringify({session_id:sessionId})});
+  state.enriched_features = r.enriched_features;
+  state.enriched_features_original = structuredClone(r.enriched_features);
+  renderEditableFeatures();
+  toast("Agent 1 complete");
+  setOverlay(false);
 }
 
 async function runAgent2(){
-  if(!state.enriched_features) return toast("Run Agent 1 first");
-
-  const shapTable = document.getElementById("shapTable");
-  shapTable.innerHTML = `<tbody>
-    <tr><td colspan="4"><div class="skeleton" style="height:34px"></div></td></tr>
-    <tr><td colspan="4"><div class="skeleton" style="height:34px"></div></td></tr>
-    <tr><td colspan="4"><div class="skeleton" style="height:34px"></div></td></tr>
-  </tbody>`;
-
-  setOverlay(true, "Running prediction (Agent 2)…");
-  try{
-    const res = await api("/agent2/run", { method:"POST", body: JSON.stringify({session_id: sessionId}) });
-    state.predictions = res.predictions;
-    state.shap_top = res.shap_top;
-
-    document.getElementById("predCategory").textContent = state.predictions.predicted_category ?? "—";
-    document.getElementById("predProb").textContent =
-      ((state.predictions.predicted_customer_favor_prob ?? 0) * 100).toFixed(2) + "%";
-    document.getElementById("catProbs").textContent = JSON.stringify(state.predictions.category_proba ?? {}, null, 2);
-
-    renderTable("shapTable", state.shap_top || [], ["feature","value","abs_value","direction"]);
-
-    const shap = await api("/agent2/shap", { method:"POST", body: JSON.stringify({session_id: sessionId}) });
-    const labels = shap.top.map(x=>x.feature).reverse();
-    const vals = shap.top.map(x=>x.value).reverse();
-
-    const ctx = document.getElementById("shapChart").getContext("2d");
-    if(shapChart) shapChart.destroy();
-    shapChart = new Chart(ctx, {
-      type: "bar",
-      data: { labels, datasets: [{ label: "SHAP value (impact)", data: vals }] },
-      options: {
-        indexAxis: "y",
-        responsive: true,
-        animation: { duration: 520, easing: "easeOutQuart" },
-        plugins: { legend: { display: false } }
-      }
-    });
-
-    toast("Agent 2 complete");
-  }catch(e){
-    console.error(e);
-    toast("Agent 2 failed");
-  }finally{
-    setOverlay(false);
-  }
-}
-
-function renderChat(){
-  const el = document.getElementById("chat");
-  el.innerHTML = "";
-  state.chat.forEach(m=>{
-    const b = document.createElement("div");
-    b.className = "bubble " + (m.role === "user" ? "user" : "bot");
-    b.textContent = m.text;
-    el.appendChild(b);
+  setOverlay(true,"Running Agent 2…");
+  const r = await api("/agent2/run",{
+    method:"POST",
+    body:JSON.stringify({
+      session_id:sessionId,
+      enriched_features_override: state.enriched_features
+    })
   });
-  el.scrollTop = el.scrollHeight;
+  state.predictions = r.predictions;
+  $("predCategory").textContent = r.predictions.predicted_category;
+  $("predProb").textContent = ((r.predictions.predicted_customer_favor_prob||0)*100).toFixed(2)+"%";
+  toast("Agent 2 complete");
+  setOverlay(false);
 }
 
 async function genExplanation(){
-  if(!state.predictions) return toast("Run Agent 2 first");
-
-  setOverlay(true, "Generating explanation (Agent 3)…");
-  try{
-    const res = await api("/agent3/explain", { method:"POST", body: JSON.stringify({session_id: sessionId}) });
-    state.explanation = res.explanation;
-    document.getElementById("explanationText").textContent = state.explanation;
-
-    state.chat = [{ role:"bot", text: "Explanation generated. Ask a follow-up question anytime." }];
-    renderChat();
-    toast("Explanation ready");
-  }catch(e){
-    console.error(e);
-    toast("Explanation failed");
-  }finally{
-    setOverlay(false);
-  }
+  setOverlay(true,"Generating explanation…");
+  const r = await api("/agent3/explain",{method:"POST",body:JSON.stringify({session_id:sessionId})});
+  state.explanation = r.explanation;
+  $("explanationText").textContent = r.explanation;
+  toast("Explanation ready");
+  setOverlay(false);
 }
 
-async function ask(){
-  const q = document.getElementById("questionInput").value.trim();
-  if(!q) return toast("Type a question first");
-  if(!state.explanation) return toast("Generate explanation first");
-
-  state.chat.push({role:"user", text:q});
-  renderChat();
-  document.getElementById("questionInput").value = "";
-
-  setOverlay(true, "Thinking…");
-  try{
-    const res = await api("/agent3/ask", { method:"POST", body: JSON.stringify({session_id: sessionId, question:q}) });
-    state.chat.push({role:"bot", text: res.answer});
-    state.explanation = res.explanation;
-    document.getElementById("explanationText").textContent = state.explanation;
-    renderChat();
-  }catch(e){
-    console.error(e);
-    toast("Failed to answer");
-  }finally{
-    setOverlay(false);
-  }
-}
-
-/* ---------- Wiring ---------- */
+/* ============================================================
+   WIRING
+============================================================ */
 function wire(){
-  // Step 0
-  document.getElementById("searchInput").addEventListener("input", (e)=>filterDisputes(e.target.value));
-  document.getElementById("disputeSelect").addEventListener("change", selectCurrent);
-  document.getElementById("reloadRowBtn").onclick = selectCurrent;
-  document.getElementById("goAgent1Btn").onclick = ()=>{ if(!state.raw_input) return toast("Select a dispute"); setStage(1); };
+  $("disputeSelect").onchange = selectCurrent;
+  $("goAgent1Btn").onclick = ()=>setStage(1);
+  $("runA1Btn").onclick = runAgent1;
+  $("goAgent2Btn").onclick = ()=>setStage(2);
+  $("runA2Btn").onclick = runAgent2;
+  $("goAgent3Btn").onclick = ()=>setStage(3);
+  $("genExplBtn").onclick = genExplanation;
 
-  // Risk segmented control
-  document.querySelectorAll("#riskSegment .segBtn").forEach(btn=>{
-    btn.addEventListener("click", ()=> setRiskTier(btn.dataset.value));
-  });
+  $("saveFeatEditsBtn").onclick = saveFeatureEdits;
+  $("resetFeatEditsBtn").onclick = resetFeatureEdits;
 
-  // Slider
-  const slider = document.getElementById("ttrSlider");
-  slider.addEventListener("input", (e)=> setTtr(e.target.value));
-  slider.addEventListener("change", (e)=> setTtr(e.target.value));
+  // segmented + slider
+  document.querySelectorAll("#riskSegment .segBtn")
+    .forEach(b=>b.onclick=()=>setRiskTier(b.dataset.value));
+  $("ttrSlider").oninput = e=>setTtr(e.target.value);
 
-  // Step 1
-  document.getElementById("back0Btn").onclick = ()=>setStage(0);
-  document.getElementById("runA1Btn").onclick = runAgent1;
-  document.getElementById("applyOverrideBtn").onclick = applyOverride;
-  document.getElementById("goAgent2Btn").onclick = ()=>{ if(!state.enriched_features) return toast("Run Agent 1 first"); setStage(2); };
-  document.getElementById("approveEnrichBtn").onclick = ()=>toast("Enrichment approved ✅");
-  document.getElementById("rejectEnrichBtn").onclick = ()=>toast("Not approved ❌");
-
-  // Step 2
-  document.getElementById("back1Btn").onclick = ()=>setStage(1);
-  document.getElementById("runA2Btn").onclick = runAgent2;
-  document.getElementById("goAgent3Btn").onclick = ()=>{ if(!state.predictions) return toast("Run Agent 2 first"); setStage(3); };
-
-  // Step 3
-  document.getElementById("back2Btn").onclick = ()=>setStage(2);
-  document.getElementById("genExplBtn").onclick = genExplanation;
-  document.getElementById("askBtn").onclick = ask;
-  document.getElementById("resetChatBtn").onclick = ()=>{ state.chat=[]; renderChat(); toast("Chat reset"); };
-
-  document.getElementById("approveCloseBtn").onclick = ()=>{
-    if(!state.explanation) return toast("Generate explanation first");
-
-    document.getElementById("finalSummary").textContent =
-      `dispute_id: ${state.raw_input?.dispute_id ?? "—"}\n` +
-      `predicted_category: ${state.predictions?.predicted_category ?? "—"}\n` +
-      `customer_favor_prob: ${((state.predictions?.predicted_customer_favor_prob ?? 0)*100).toFixed(2)}%`;
-
-    document.getElementById("finalExplanation").textContent = state.explanation;
-    setStage(4);
-  };
-
-  // Done
-  document.getElementById("newCaseBtn").onclick = ()=>window.location.reload();
-  document.getElementById("reviewA2Btn").onclick = ()=>setStage(2);
-
-  // Global reset
-  document.getElementById("resetBtn").onclick = async ()=>{
-    setOverlay(true, "Resetting session…");
-    try{
-      await api("/session/reset", { method:"POST", body: JSON.stringify({session_id: sessionId}) });
-      toast("Reset done");
-      window.location.reload();
-    }catch(e){
-      console.error(e);
-      toast("Reset failed");
-      setOverlay(false);
-    }
+  // evidence upload (dummy)
+  $("uploadEvidenceBtn").onclick = ()=>$("evidenceInput").click();
+  $("evidenceInput").onchange = ()=>{
+    const f = Array.from($("evidenceInput").files||[]);
+    state.evidenceFiles.push(...f);
+    updateEvidenceUI();
+    toast(`${f.length} file(s) added`);
+    $("evidenceInput").value="";
   };
 }
 
-/* ---------- Init ---------- */
+/* ============================================================
+   INIT
+============================================================ */
 (async function init(){
+  $("sessionPill").textContent = `Session: ${sessionId.slice(0,8)}…`;
+  authInit();
   renderRoadmap();
   showPanel(0);
   updateProgress();
-
-  // defaults for controls (safe before row selection)
-  setRiskTier(1);
-  setTtr(0);
-
-  try{
-    await loadDisputes();
-    // trigger select once if first option exists (optional):
-    // await selectCurrent();
-  }finally{
-    wire();
-    // remove initial loader once UI is ready and disputes loaded
-    hidePageLoader();
-  }
+  await loadDisputes();
+  wire();
+  hidePageLoader();
 })();
