@@ -51,6 +51,19 @@ def get_session(session_id: str) -> Dict[str, Any]:
 
 
 # ---------- Schemas ----------
+
+class SessionOnlyReq(BaseModel):
+    session_id: str
+
+class Agent2RunReq(BaseModel):
+    session_id: str
+    enriched_features_override: Optional[Dict[str, Any]] = None
+
+class Agent2ShapReq(BaseModel):
+    session_id: str
+    enriched_features_override: Optional[Dict[str, Any]] = None
+
+
 class SessionReq(BaseModel):
     session_id: str
 
@@ -170,29 +183,53 @@ def agent1_override(req: OverrideReq):
     }
 
 @app.post("/agent2/run")
-def agent2_run(req: SessionReq):
-    s = get_session(req.session_id)
-    if not s["enriched_features"]:
-        raise HTTPException(400, "Missing enriched_features")
+def agent2_run(req: Agent2RunReq):
+    session = SESSIONS.get(req.session_id)
+    if not session:
+        raise HTTPException(status_code=400, detail="Invalid session_id")
 
-    preds, shap_top = run_agent2(s["enriched_features"])
-    s["agent2_predictions"] = preds
-    s["agent2_shap_top_features"] = shap_top
+    # IMPORTANT: prefer override if provided
+    feats = req.enriched_features_override or session.get("enriched_features")
+    if not feats:
+        raise HTTPException(status_code=400, detail="Missing enriched features. Run agent1 first.")
+
+    preds, shap_top = run_agent2(feats)
+
+    # optional: persist predictions/shap in session
+    session["agent2_predictions"] = preds
+    session["agent2_shap_top_features"] = shap_top
+
     return {"predictions": preds, "shap_top": shap_top}
 
-@app.post("/agent2/shap")
-def agent2_shap(req: SessionReq):
-    s = get_session(req.session_id)
-    if not s["enriched_features"]:
-        raise HTTPException(400, "Missing enriched_features")
 
-    shap_vec, feat_cols = compute_shap_for_instance(s["enriched_features"])
-    # return top 10 by abs impact
+
+@app.post("/agent2/shap")
+def agent2_shap(req: Agent2ShapReq):
+    session = SESSIONS.get(req.session_id)
+    if not session:
+        raise HTTPException(status_code=400, detail="Invalid session_id")
+
+    feats = req.enriched_features_override or session.get("enriched_features")
+    if not feats:
+        raise HTTPException(status_code=400, detail="Missing enriched features. Run agent1 first.")
+
+    shap_vec, feat_cols = compute_shap_for_instance(feats)
+
+    # Build "top" list like your UI expects
     import numpy as np
     abs_vals = np.abs(shap_vec)
     top_idx = np.argsort(-abs_vals)[:10]
-    top = [{"feature": feat_cols[i], "value": float(shap_vec[i])} for i in top_idx]
+
+    top = []
+    for i in top_idx:
+        top.append({
+            "feature": feat_cols[i],
+            "value": float(shap_vec[i]),
+        })
+
     return {"top": top}
+
+
 
 @app.post("/agent3/explain")
 def agent3_explain(req: SessionReq):

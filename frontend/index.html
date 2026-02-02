@@ -9,6 +9,7 @@
 </head>
 
 <body>
+  <!-- Background animation layers -->
   <div class="bg">
     <div class="blob b1"></div>
     <div class="blob b2"></div>
@@ -16,6 +17,7 @@
     <div class="grain"></div>
   </div>
 
+  <!-- Initial page loader -->
   <div class="pageLoader" id="pageLoader">
     <div class="pageLoaderCard">
       <div class="spinnerLg"></div>
@@ -54,7 +56,7 @@
 
       <div class="authFoot">
         <div class="small">
-          Note: This is a UI gate. For real security, validate credentials server-side and issue a session token.
+          Note: This is a UI gate only. For real security, validate credentials server-side and issue a token.
         </div>
       </div>
     </div>
@@ -64,8 +66,8 @@
 
     <header class="topbar">
       <div class="brand">
-        <div class="title">Dispute Prediction & Explainability</div>
-        <div class="subtitle">Agentic pipeline with human-in-loop controls</div>
+        <div class="title">Dispute Intelligence Wizard</div>
+        <div class="subtitle">Human-in-loop agent pipeline with explainability</div>
       </div>
       <div class="topActions">
         <div class="pill" id="sessionPill" title="Session ID"></div>
@@ -74,6 +76,7 @@
       </div>
     </header>
 
+    <!-- Sticky roadmap / stepper -->
     <div class="sticky">
       <nav class="roadmap" id="roadmap"></nav>
       <div class="progressTrack">
@@ -92,7 +95,7 @@
           </div>
           <div class="panelActions">
             <button class="btn" id="reloadRowBtn">Reload row</button>
-            <button class="btn primary" id="goAgent1Btn">Go to Agent 1</button>
+            <button class="btn primary" id="goAgent1Btn">Go to Enrichment</button>
           </div>
         </div>
 
@@ -125,21 +128,22 @@
       <section class="panel hidden" id="step1">
         <div class="panelHead">
           <div>
-            <h2>Step 1 — Agent 1: Enrichment + review</h2>
+            <h2>Step 1 — Enrichment</h2>
             <div class="hint">Generate enriched features, review explanations, apply overrides.</div>
           </div>
           <div class="panelActions">
             <button class="btn" id="back0Btn">Back</button>
             <button class="btn" id="runA1Btn">Run enrichment</button>
-            <button class="btn primary" id="goAgent2Btn">Go to Agent 2</button>
+            <button class="btn primary" id="goAgent2Btn">Go to Prediction</button>
           </div>
         </div>
 
         <div class="grid2">
+          <!-- LEFT: overrides -->
           <div class="card">
             <div class="cardTitle">Human overrides</div>
 
-            <!-- NEW: Evidence uploader (dummy) -->
+            <!-- Evidence upload (dummy) -->
             <div class="row">
               <label>Evidence upload (dummy)</label>
               <div class="uploadRow">
@@ -148,7 +152,7 @@
                 <div class="uploadMeta" id="evidenceMeta">No files uploaded</div>
               </div>
               <div class="fileList" id="evidenceList"></div>
-              <div class="small">No processing is done — this is just UI and count tracking.</div>
+              <div class="small">No processing is done — just UI tracking & count.</div>
             </div>
 
             <div class="divider"></div>
@@ -167,7 +171,7 @@
                   <button class="segBtn" data-value="3" type="button">3</button>
                   <button class="segBtn" data-value="4" type="button">4</button>
                 </div>
-                <div class="small" id="riskHint">Lower = safer, higher = riskier</div>
+                <div class="small">Lower = safer, higher = riskier</div>
               </div>
 
               <div class="row">
@@ -175,18 +179,20 @@
                 <input type="number" step="0.01" id="amtInput"/>
               </div>
 
+              <!-- NEW: slider + input (two-way) -->
               <div class="row">
                 <label>Time to raise (days)</label>
                 <div class="sliderRow">
                   <input type="range" min="0" max="365" step="1" id="ttrSlider"/>
+                  <input type="number" id="ttrInput" min="0" max="365" step="1" inputmode="numeric" />
                   <div class="sliderValue"><span id="ttrValue">0</span> days</div>
                 </div>
-                <div class="small">Drag to adjust quickly (0–365). Fine control via arrow keys.</div>
+                <div class="small">Drag for speed, type for precision (0–365).</div>
               </div>
             </div>
 
             <div class="row">
-              <button class="btn" id="applyOverrideBtn">Apply + recompute</button>
+              <button class="btn primary" id="applyOverrideBtn">Apply + recompute</button>
             </div>
 
             <div class="divider"></div>
@@ -195,14 +201,15 @@
               <button class="btn danger" id="rejectEnrichBtn">Not approved</button>
             </div>
 
-            <div class="diffBox" id="overrideDiff">No changes yet.</div>
+            <div class="diffBox" id="overrideDiff">No changes.</div>
           </div>
 
+          <!-- RIGHT: enriched features editable -->
           <div class="card">
             <div class="cardHeadRow">
               <div>
                 <div class="cardTitle">Enriched features</div>
-                <div class="small">You can edit values inline. Click “Save edits” to use them downstream.</div>
+                <div class="small">Edit values inline → click “Save edits” → Prediction will use them.</div>
               </div>
 
               <div class="inlineActions">
@@ -211,12 +218,16 @@
               </div>
             </div>
 
-            <div class="tableWrap">
-              <table class="table" id="featTable"></table>
+            <div class="saveBanner hidden" id="featDirtyBanner">
+              You have unsaved changes. Click <b>Save edits</b> to use them for Prediction.
             </div>
 
-            <div class="saveBanner hidden" id="featSaveBanner">
-              Edited enriched features are saved locally for this session and will be used for Agent 2.
+            <div class="saveBanner hidden ok" id="featSavedBanner">
+              Saved ✅ Your edited enriched-features will be used in Prediction & SHAP.
+            </div>
+
+            <div class="tableWrap">
+              <table class="table" id="featTable"></table>
             </div>
           </div>
         </div>
@@ -231,13 +242,13 @@
       <section class="panel hidden" id="step2">
         <div class="panelHead">
           <div>
-            <h2>Step 2 — Agent 2: Prediction + SHAP</h2>
+            <h2>Step 2 — Prediction</h2>
             <div class="hint">Run prediction, inspect probabilities, understand top drivers.</div>
           </div>
           <div class="panelActions">
             <button class="btn" id="back1Btn">Back</button>
-            <button class="btn" id="runA2Btn">Run prediction</button>
-            <button class="btn primary" id="goAgent3Btn">Go to Agent 3</button>
+            <button class="btn primary" id="runA2Btn">Run prediction</button>
+            <button class="btn" id="goAgent3Btn">Go to Trust</button>
           </div>
         </div>
 
@@ -275,19 +286,19 @@
       <section class="panel hidden" id="step3">
         <div class="panelHead">
           <div>
-            <h2>Step 3 — Agent 3: Explanation + Q&A</h2>
+            <h2>Step 3 — Trust</h2>
             <div class="hint">Generate a narrative explanation and ask follow-up questions.</div>
           </div>
           <div class="panelActions">
             <button class="btn" id="back2Btn">Back</button>
-            <button class="btn" id="genExplBtn">Generate explanation</button>
+            <button class="btn primary" id="genExplBtn">Generate trust note</button>
             <button class="btn success" id="approveCloseBtn">Approve & close</button>
           </div>
         </div>
 
         <div class="grid2">
           <div class="card">
-            <div class="cardTitle">Explanation</div>
+            <div class="cardTitle">Trust explanation</div>
             <pre class="code" id="explanationText">—</pre>
           </div>
 
@@ -312,7 +323,7 @@
           </div>
           <div class="panelActions">
             <button class="btn primary" id="newCaseBtn">Start new dispute</button>
-            <button class="btn" id="reviewA2Btn">Review Agent 2</button>
+            <button class="btn" id="reviewA2Btn">Review Prediction</button>
           </div>
         </div>
 
@@ -330,6 +341,7 @@
 
     <div class="toast" id="toast"></div>
 
+    <!-- Overlay loader -->
     <div class="overlay hidden" id="overlay">
       <div class="overlayCard">
         <div class="spinner"></div>
