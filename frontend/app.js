@@ -204,8 +204,6 @@ function resetEvidence(){
    CONTROLS (SEGMENT + SLIDER + INPUT)
 ============================================================ */
 function markOverridesDirty(){
-  // Purely UX: show that recompute will reset enrichment output
-  // (we keep feature edits safe if user saved them)
   const box = $("overrideDiff");
   if(box && !box.textContent.includes("Pending")){
     box.textContent = "Pending changes (apply + recompute to update enrichment output).";
@@ -246,7 +244,6 @@ function setOverrideInputs(){
   const ttr = Number(r.time_to_raise_days ?? r.time_to_raise ?? 0);
   setTtr(Number.isFinite(ttr) ? ttr : 0);
 
-  // clear pending message (fresh row)
   $("overrideDiff").textContent = "No changes.";
 }
 
@@ -289,7 +286,6 @@ function renderEditableFeatures(){
       const key = inp.dataset.k;
       const raw = inp.value;
 
-      // keep numeric when possible
       const asNum = Number(raw);
       state.enriched_features_edited[key] = (raw !== "" && Number.isFinite(asNum)) ? asNum : raw;
 
@@ -298,7 +294,6 @@ function renderEditableFeatures(){
     });
   });
 
-  // if there are already unsaved edits
   setDirtyBanner(state.enriched_features_dirty);
 }
 
@@ -326,23 +321,15 @@ function resetFeatureEdits(){
   toast("Edits reset");
 }
 
-/* IMPORTANT:
-   When you Apply + recompute, backend returns new enriched_features.
-   If user had saved edits BEFORE, we re-apply them on top (so they don’t vanish).
-*/
 function reapplySavedEditsOnTop(newEnriched){
-  // If user saved edits, state.enriched_features currently holds them.
-  // We want to preserve any keys the user changed (compared to previous original).
-  // We can do: take newEnriched baseline, then overwrite with current state.enriched_features for matching keys.
   if(!state.enriched_features || !state.enriched_features_original) return newEnriched;
 
   const merged = structuredClone(newEnriched);
 
-  // compare old original vs current saved
   for(const [k, vSaved] of Object.entries(state.enriched_features)){
     const vOrig = state.enriched_features_original?.[k];
     if(String(vSaved) !== String(vOrig)){
-      merged[k] = vSaved; // keep user-changed value
+      merged[k] = vSaved;
     }
   }
   return merged;
@@ -397,7 +384,6 @@ async function selectCurrent(){
     state.raw_input = r.raw_input;
     $("rawJson").textContent = JSON.stringify(r.raw_input,null,2);
 
-    // reset downstream
     state.enriched_features = null;
     state.enriched_features_original = null;
     state.enriched_features_edited = null;
@@ -435,7 +421,6 @@ async function runAgent1(){
     state.enriched_features = r.enriched_features;
     state.enriched_features_original = structuredClone(r.enriched_features);
 
-    // reset edit buffer
     state.enriched_features_edited = null;
     state.enriched_features_dirty = false;
     setDirtyBanner(false);
@@ -462,24 +447,19 @@ async function applyOverride(){
 
   setOverlay(true,"Applying overrides + recomputing…");
   try{
-    // IMPORTANT: backend recompute
     const r = await api("/agent1/override",{
       method:"POST",
       body:JSON.stringify({session_id:sessionId, patch})
     });
 
-    // update raw input from backend
     state.raw_input = r.raw_input;
     $("rawJson").textContent = JSON.stringify(r.raw_input,null,2);
 
-    // backend returned new enriched features
     const newEnriched = r.enriched_features;
-
-    // preserve user's saved edits by reapplying them on top
     const merged = reapplySavedEditsOnTop(newEnriched);
 
     state.enriched_features = merged;
-    state.enriched_features_original = structuredClone(newEnriched); // original becomes backend recompute baseline
+    state.enriched_features_original = structuredClone(newEnriched);
     state.enriched_features_edited = null;
     state.enriched_features_dirty = false;
     setDirtyBanner(false);
@@ -528,7 +508,6 @@ async function runAgent2(){
 
   setOverlay(true,"Running Prediction…");
   try{
-    // send edited enriched features to backend
     const r = await api("/agent2/run",{
       method:"POST",
       body:JSON.stringify({
@@ -547,7 +526,6 @@ async function runAgent2(){
 
     renderTable("shapTable", state.shap_top || [], ["feature","value","abs_value","direction"]);
 
-    // SHAP chart should use the SAME override
     const shap = await api("/agent2/shap",{
       method:"POST",
       body:JSON.stringify({
@@ -649,13 +627,11 @@ async function ask(){
 function wire(){
   $("sessionPill").textContent = `Session: ${sessionId.slice(0,8)}…`;
 
-  // step 0
   $("searchInput").addEventListener("input", (e)=>filterDisputes(e.target.value));
   $("disputeSelect").addEventListener("change", selectCurrent);
   $("reloadRowBtn").onclick = selectCurrent;
   $("goAgent1Btn").onclick = ()=>{ if(!state.raw_input) return toast("Select a dispute"); setStage(1); };
 
-  // step 1
   $("back0Btn").onclick = ()=>setStage(0);
   $("runA1Btn").onclick = runAgent1;
   $("applyOverrideBtn").onclick = applyOverride;
@@ -664,11 +640,9 @@ function wire(){
   $("approveEnrichBtn").onclick = ()=>toast("Enrichment approved ✅");
   $("rejectEnrichBtn").onclick = ()=>toast("Not approved ❌");
 
-  // segmented
   document.querySelectorAll("#riskSegment .segBtn")
     .forEach(b=>b.onclick=()=>setRiskTier(b.dataset.value));
 
-  // slider + input two-way
   $("ttrSlider").addEventListener("input", (e)=> setTtr(e.target.value));
   $("ttrSlider").addEventListener("change", (e)=> setTtr(e.target.value));
 
@@ -681,11 +655,9 @@ function wire(){
     else setTtr(e.target.value);
   });
 
-  // other override fields -> mark dirty
   $("mccInput").addEventListener("input", markOverridesDirty);
   $("amtInput").addEventListener("input", markOverridesDirty);
 
-  // evidence upload (dummy)
   $("uploadEvidenceBtn").onclick = ()=>$("evidenceInput").click();
   $("evidenceInput").onchange = ()=>{
     const f = Array.from($("evidenceInput").files||[]);
@@ -695,16 +667,13 @@ function wire(){
     $("evidenceInput").value="";
   };
 
-  // enriched features edit actions
   $("saveFeatEditsBtn").onclick = saveFeatureEdits;
   $("resetFeatEditsBtn").onclick = resetFeatureEdits;
 
-  // step 2
   $("back1Btn").onclick = ()=>setStage(1);
   $("runA2Btn").onclick = runAgent2;
   $("goAgent3Btn").onclick = ()=>{ if(!state.predictions) return toast("Run Prediction first"); setStage(3); };
 
-  // step 3
   $("back2Btn").onclick = ()=>setStage(2);
   $("genExplBtn").onclick = genExplanation;
   $("askBtn").onclick = ask;
@@ -722,11 +691,9 @@ function wire(){
     setStage(4);
   };
 
-  // done
   $("newCaseBtn").onclick = ()=>window.location.reload();
   $("reviewA2Btn").onclick = ()=>setStage(2);
 
-  // reset session (backend)
   $("resetBtn").onclick = async ()=>{
     setOverlay(true, "Resetting session…");
     try{
@@ -750,7 +717,6 @@ function wire(){
   showPanel(0);
   updateProgress();
 
-  // defaults (safe before selection)
   setRiskTier(1);
   setTtr(0);
   resetEvidence();
