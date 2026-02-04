@@ -10,3 +10,7 @@ src/__pycache__/.
 
 # Ignore .Ds_Store files (macOS)
 .DS_Store
+
+
+# Ignore .env files
+.env
