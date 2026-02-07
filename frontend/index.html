@@ -28,35 +28,73 @@
     </div>
   </div>
 
-  <!-- Admin Login Gate -->
+  <!-- Admin Login Gate - ENHANCED -->
   <div class="authGate hidden" id="authGate">
-    <div class="authCard">
-      <div class="authBrand">
-        <div class="authTitle">Admin Login</div>
-        <div class="authSub">Access is restricted to authorized users.</div>
+    <div class="authContainer">
+      <!-- LEFT: Hero Section -->
+      <div class="authHero">
+        <div class="heroContent">
+          <div class="heroIcon">⚖️</div>
+          <h1 class="heroTitle">Dispute Intelligence Wizard</h1>
+          <p class="heroTagline">From confusion to closure — an AI agent that understands disputes, explains decisions, and resolves them fast.</p>
+          
+          <div class="heroFeatures">
+            <div class="heroFeature">
+              <div class="featureIcon">🔍</div>
+              <div class="featureText">
+                <div class="featureTitle">Smart Analysis</div>
+                <div class="featureDesc">AI-powered dispute enrichment</div>
+              </div>
+            </div>
+            <div class="heroFeature">
+              <div class="featureIcon">📊</div>
+              <div class="featureText">
+                <div class="featureTitle">Explainable AI</div>
+                <div class="featureDesc">SHAP-driven predictions</div>
+              </div>
+            </div>
+            <div class="heroFeature">
+              <div class="featureIcon">✅</div>
+              <div class="featureText">
+                <div class="featureTitle">Human-in-Loop</div>
+                <div class="featureDesc">Override and validate</div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div class="authForm">
-        <div class="row">
-          <label>Username</label>
-          <input id="loginUser" placeholder="admin" autocomplete="username"/>
-        </div>
-        <div class="row">
-          <label>Password</label>
-          <input id="loginPass" type="password" placeholder="••••••••" autocomplete="current-password"/>
-        </div>
+      <!-- RIGHT: Login Form -->
+      <div class="authFormSection">
+        <div class="authCard">
+          <div class="authBrand">
+            <div class="authTitle">Admin Login</div>
+            <div class="authSub">Access is restricted to authorized users.</div>
+          </div>
 
-        <div class="row inline">
-          <button class="btn primary" id="loginBtn">Login</button>
-          <button class="btn ghost" id="loginHelpBtn" type="button">Help</button>
-        </div>
+          <div class="authForm">
+            <div class="row">
+              <label>Username</label>
+              <input id="loginUser" placeholder="admin" autocomplete="username"/>
+            </div>
+            <div class="row">
+              <label>Password</label>
+              <input id="loginPass" type="password" placeholder="••••••••" autocomplete="current-password"/>
+            </div>
 
-        <div class="authError" id="authError"></div>
-      </div>
+            <div class="row inline">
+              <button class="btn primary" id="loginBtn">Login</button>
+              <button class="btn ghost" id="loginHelpBtn" type="button">Help</button>
+            </div>
 
-      <div class="authFoot">
-        <div class="small">
-          Note: This is a UI gate only. For real security, validate credentials server-side and issue a token.
+            <div class="authError" id="authError"></div>
+          </div>
+
+          <div class="authFoot">
+            <div class="small">
+              Note: This is a UI gate only. For real security, validate credentials server-side and issue a token.
+            </div>
+          </div>
         </div>
       </div>
     </div>
