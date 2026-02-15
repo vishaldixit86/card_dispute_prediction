@@ -1,7 +1,7 @@
 /* ============================================================
    CONFIG + SESSION
 ============================================================ */
-const API = "http://localhost:8000";
+const API = "http://192.168.12.43:8001";
 const sessionId = localStorage.getItem("session_id") || crypto.randomUUID();
 localStorage.setItem("session_id", sessionId);
 
